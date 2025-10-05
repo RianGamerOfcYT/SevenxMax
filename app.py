@@ -1,8 +1,8 @@
 """
 ╔═══════════════════════════════════════════════════════════╗
-║           SEVENX MAX - APP PARA MODELO 1M                 ║
-║  Corrige deserialização do PositionalEmbedding e roda     ║
-║  o modelo de conversa 1M diretamente no Flask            ║
+║           SEVENX MAX - APP PARA MODELO 1M (CORRIGIDO)     ║
+║   - Otimiza a geração de resposta para evitar travamentos  ║
+║   - Corrige a limpeza de texto para ser igual ao treino    ║
 ╚═══════════════════════════════════════════════════════════╝
 """
 import os
@@ -20,7 +20,7 @@ from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
-# ===================== CLASSES PERSONALIZADAS =====================
+# ===================== CLASSES PERSONALIZADAS (NÃO ALTERADAS) =====================
 class TransformerEncoder(layers.Layer):
     def __init__(self, embed_dim, dense_dim, num_heads, **kwargs):
         super().__init__(**kwargs)
@@ -38,7 +38,7 @@ class TransformerEncoder(layers.Layer):
 
 class PositionalEmbedding(layers.Layer):
     def __init__(self, sequence_length, vocab_size, embed_dim, **kwargs):
-        super().__init__(**kwargs)  # aceita name, trainable, dtype
+        super().__init__(**kwargs)
         self.sequence_length = sequence_length
         self.vocab_size = vocab_size
         self.embed_dim = embed_dim
@@ -60,7 +60,7 @@ class PositionalEmbedding(layers.Layer):
         return config
 
 # ===================== CONFIGURAÇÃO =====================
-MODEL_DIR = "model/sevenx_tf_conversa_1m"
+MODEL_DIR = "./model/sevenx_tf_conversa_1m"
 MODEL_PATH = os.path.join(MODEL_DIR, "model.keras")
 TOKENIZER_PATH = os.path.join(MODEL_DIR, "tokenizer_vocab.pkl")
 
@@ -70,47 +70,78 @@ VOCAB_SIZE = 6000
 model = None
 tokenizer_layer = None
 index_to_word = None
+start_token_id = None
+end_token_id = None
 
 # ===================== FUNÇÕES =====================
 def clean_text(text):
     text = str(text).lower()
     text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('utf-8', 'ignore')
     text = re.sub(r'[^a-z0-9\s_.,?]', '', text)
-    return f"[start] {text}"
+    # CORREÇÃO: Adicionado o token [end] para ser consistente com os dados de treino
+    return f"[start] {text} [end]"
 
 def load_model_and_tokenizer():
-    global model, tokenizer_layer, index_to_word
+    global model, tokenizer_layer, index_to_word, start_token_id, end_token_id
     print("🧠 Carregando modelo 1M...")
     custom_objects = {
         "TransformerEncoder": TransformerEncoder,
         "PositionalEmbedding": PositionalEmbedding
     }
     model = keras.models.load_model(MODEL_PATH, custom_objects=custom_objects)
+    
     with open(TOKENIZER_PATH, 'rb') as f:
         vocab = pickle.load(f)
+        
     tokenizer_layer = layers.TextVectorization(max_tokens=VOCAB_SIZE, output_sequence_length=MAX_LEN, vocabulary=vocab)
     index_to_word = {i: w for i, w in enumerate(vocab)}
+    
+    # OTIMIZAÇÃO: Pega os IDs dos tokens de controle uma única vez
+    word_to_index = {w: i for i, w in enumerate(vocab)}
+    start_token_id = word_to_index.get("[start]")
+    end_token_id = word_to_index.get("[end]")
+    
     print("✅ Modelo e tokenizer carregados com sucesso!")
 
+# ===================== FUNÇÃO DE GERAÇÃO OTIMIZADA =====================
 def generate_response(prompt):
     if model is None:
         return "Modelo não carregado."
     
+    # 1. Prepara a entrada do usuário (encoder input)
     cleaned_prompt = clean_text(prompt)
     input_tokens = tokenizer_layer([cleaned_prompt])
-    output_tokens = ["[start]"]
 
-    for i in range(MAX_LEN - 1):
-        decoder_input = tokenizer_layer([" ".join(output_tokens)])
-        preds = model.predict([input_tokens, decoder_input], verbose=0)
-        next_token_index = np.argmax(preds[0, i, :])
-        next_word = index_to_word.get(next_token_index, "[unk]")
-        if next_word == "[end]": break
-        output_tokens.append(next_word)
+    # 2. Prepara a entrada inicial para o decoder
+    # Cria um array de zeros e coloca o token [start] na primeira posição
+    decoder_input = np.zeros((1, MAX_LEN), dtype=np.int64)
+    decoder_input[0, 0] = start_token_id
     
-    return " ".join(output_tokens[1:]).replace("[unk]", "").strip()
+    output_indices = []
 
-# ===================== ROTAS =====================
+    # 3. Loop de geração auto-regressivo (muito mais rápido)
+    for i in range(1, MAX_LEN):
+        # Faz a predição
+        preds = model.predict([input_tokens, decoder_input], verbose=0)
+        
+        # Pega o ID do token com maior probabilidade na última posição
+        next_token_index = np.argmax(preds[0, i-1, :])
+
+        # Se for o token de fim, para o loop
+        if next_token_index == end_token_id:
+            break
+        
+        # Adiciona o token previsto à nossa lista de saída
+        output_indices.append(next_token_index)
+        # E também o adiciona na próxima posição do input do decoder para a próxima iteração
+        decoder_input[0, i] = next_token_index
+
+    # 4. Converte os IDs de volta para palavras
+    response_words = [index_to_word.get(idx, "") for idx in output_indices]
+    
+    return " ".join(response_words).strip()
+
+# ===================== ROTAS (NÃO ALTERADAS) =====================
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -129,5 +160,3 @@ if __name__ == '__main__':
     load_model_and_tokenizer()
     print("\n🚀 SEVENX MAX - API 1M rodando")
     app.run(host='127.0.0.1', port=5001, debug=False)
-
-
