@@ -60,7 +60,7 @@ class PositionalEmbedding(layers.Layer):
         return config
 
 # ===================== CONFIGURAÇÃO =====================
-MODEL_DIR = "./model/sevenx_tf_conversa_1m"
+MODEL_DIR = "model/sevenx_tf_conversa_1m"
 MODEL_PATH = os.path.join(MODEL_DIR, "model.keras")
 TOKENIZER_PATH = os.path.join(MODEL_DIR, "tokenizer_vocab.pkl")
 
@@ -129,3 +129,4 @@ if __name__ == '__main__':
     load_model_and_tokenizer()
     print("\n🚀 SEVENX MAX - API 1M rodando")
     app.run(host='127.0.0.1', port=5001, debug=False)
+
