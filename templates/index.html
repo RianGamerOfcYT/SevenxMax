@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SevenX MAX - FINAL FORM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style> body { font-family: 'Inter', sans-serif; } </style>
+</head>
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen py-10">
+
+    <!-- SEÇÃO DE TEXTO (PICO PRO) -->
+    <div class="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-2xl mx-4">
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-bold text-cyan-400">SevenX MAX - Texto</h1>
+            <p class="text-gray-400">Powered by PICO PRO</p>
+        </div>
+        <div class="space-y-4">
+            <div>
+                <label for="text-prompt" class="block text-sm font-medium text-gray-300 mb-2">Sua pergunta:</label>
+                <textarea id="text-prompt" rows="3" class="w-full bg-gray-700 rounded-lg p-3" placeholder="Como criar uma lista em Python?"></textarea>
+            </div>
+            <button id="text-submit" class="w-full bg-cyan-600 hover:bg-cyan-700 font-bold py-3 px-4 rounded-lg flex items-center justify-center">
+                <span class="btn-text">Gerar Texto</span>
+                <span class="btn-spinner hidden animate-spin rounded-full h-5 w-5 border-b-2"></span>
+            </button>
+        </div>
+        <div id="text-result" class="mt-8 p-6 bg-gray-700 rounded-lg hidden">
+            <h2 class="text-xl font-semibold mb-3 text-cyan-300">Resposta:</h2>
+            <p id="text-response" class="whitespace-pre-wrap"></p>
+        </div>
+    </div>
+
+    <!-- SEÇÃO DE IMAGEM (ARTISTA GAN) -->
+    <div class="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-2xl mx-4 mt-8">
+        <div class="text-center mb-6">
+            <h1 class="text-2xl font-bold text-purple-400">SevenX MAX - Imagem</h1>
+            <p class="text-gray-400">Powered by Artista (GAN)</p>
+        </div>
+        <button id="image-submit" class="w-full bg-purple-600 hover:bg-purple-700 font-bold py-3 px-4 rounded-lg flex items-center justify-center">
+            <span class="btn-text">Gerar Nova Arte</span>
+            <span class="btn-spinner hidden animate-spin rounded-full h-5 w-5 border-b-2"></span>
+        </button>
+        <div id="image-result" class="mt-8 p-6 bg-gray-700 rounded-lg hidden">
+            <h2 class="text-xl font-semibold mb-3 text-purple-300">Obra de Arte Gerada:</h2>
+            <div class="flex justify-center">
+                <img id="generated-image" class="rounded-lg max-w-full h-auto" src="" alt="Imagem gerada" />
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Lógica para o Gerador de Texto
+        const textPrompt = document.getElementById('text-prompt');
+        const textSubmit = document.getElementById('text-submit');
+        const textResult = document.getElementById('text-result');
+        const textResponse = document.getElementById('text-response');
+
+        textSubmit.addEventListener('click', async () => {
+            const prompt = textPrompt.value.trim();
+            if (!prompt) return;
+            
+            const btnText = textSubmit.querySelector('.btn-text');
+            const btnSpinner = textSubmit.querySelector('.btn-spinner');
+            
+            textSubmit.disabled = true;
+            btnText.classList.add('hidden');
+            btnSpinner.classList.remove('hidden');
+            textResult.classList.add('hidden');
+
+            try {
+                const res = await fetch('/api/generate_text', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt }),
+                });
+                const data = await res.json();
+                textResponse.textContent = data.completion;
+                textResult.classList.remove('hidden');
+            } finally {
+                textSubmit.disabled = false;
+                btnText.classList.remove('hidden');
+                btnSpinner.classList.add('hidden');
+            }
+        });
+
+        // Lógica para o Gerador de Imagem
+        const imageSubmit = document.getElementById('image-submit');
+        const imageResult = document.getElementById('image-result');
+        const generatedImage = document.getElementById('generated-image');
+
+        imageSubmit.addEventListener('click', async () => {
+            const btnText = imageSubmit.querySelector('.btn-text');
+            const btnSpinner = imageSubmit.querySelector('.btn-spinner');
+
+            imageSubmit.disabled = true;
+            btnText.classList.add('hidden');
+            btnSpinner.classList.remove('hidden');
+            imageResult.classList.add('hidden');
+            
+            try {
+                const res = await fetch('/api/generate_image', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    generatedImage.src = 'data:image/png;base64,' + data.image;
+                    imageResult.classList.remove('hidden');
+                }
+            } finally {
+                imageSubmit.disabled = false;
+                btnText.classList.remove('hidden');
+                btnSpinner.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
+
